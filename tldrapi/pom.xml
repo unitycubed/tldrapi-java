@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Maven POM for the TLDRapi Java SDK.
+
+    GroupId + artifactId are the coordinates Sonatype OSSRH grants us
+    for Maven Central publication (see CLAUDE.md and Step 48 of the
+    launch plan). Bump `version` for every release and follow SemVer.
+
+    Runtime dep: jackson-databind for JSON (widely-used, permissive
+    license, most Java projects already have it). The HTTP transport
+    is java.net.http (built into JDK 11+), so we do NOT pull in
+    Apache HttpClient or OkHttp.
+
+    Test deps: JUnit 5 (test scope only — not shipped to consumers).
+
+    To publish to OSSRH / Maven Central (once Sonatype ticket is
+    approved and a GPG key is on public keyservers):
+
+        mvn clean deploy -P release
+
+    See runbooks/publish-java-sdk-maven-central.md.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.unitycubed</groupId>
+    <artifactId>tldrapi</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <name>tldrapi</name>
+    <description>Official Java SDK for the TLDRapi text-summarization API</description>
+    <url>https://tldrapi.com</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>ehrenbiglari</id>
+            <name>Ehren Biglari</name>
+            <email>support@tldrapi.com</email>
+            <organization>Unity Cubed</organization>
+            <organizationUrl>https://unitycubed.dev</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/unitycubed/tldrapi.git</connection>
+        <developerConnection>scm:git:ssh://github.com:unitycubed/tldrapi.git</developerConnection>
+        <url>https://github.com/unitycubed/tldrapi/tree/main/sdks/java/tldrapi</url>
+    </scm>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <jackson.version>2.17.2</jackson.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Activated via `mvn -P release deploy`. Bundles sources +
+             javadoc jars, GPG-signs everything, and pushes to
+             Sonatype OSSRH staging. -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals><goal>jar-no-fork</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.7.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals><goal>jar</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.4</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals><goal>sign</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.plugins</groupId>
+                        <artifactId>nexus-staging-maven-plugin</artifactId>
+                        <version>1.7.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <serverId>ossrh</serverId>
+                            <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+                            <autoReleaseAfterClose>false</autoReleaseAfterClose>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+            <distributionManagement>
+                <snapshotRepository>
+                    <id>ossrh</id>
+                    <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
+                </snapshotRepository>
+                <repository>
+                    <id>ossrh</id>
+                    <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                </repository>
+            </distributionManagement>
+        </profile>
+    </profiles>
+</project>
