@@ -37,7 +37,7 @@ public final class Tldrapi {
     public static final String VERSION = "0.1.0";
 
     /** RapidAPI hostname for the TLDRapi listing. */
-    public static final String DEFAULT_RAPIDAPI_HOST = "tldrapi-summarizer.p.rapidapi.com";
+    public static final String DEFAULT_RAPIDAPI_HOST = "tldrapi-summarization.p.rapidapi.com";
 
     private final TldrapiOptions options;
     private final HttpTransport transport;
