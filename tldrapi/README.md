@@ -107,7 +107,7 @@ All builder options with defaults:
 ```java
 Tldrapi client = Tldrapi.builder()
     .rapidApiKey("...")                    // required
-    .rapidApiHost("tldrapi-summarization.p.rapidapi.com") // default
+    .rapidApiHost("tldrapi-summarizer.p.rapidapi.com") // default
     .baseUrl(null)                          // defaults to https://<rapidApiHost>
     .timeoutSeconds(60)                     // per-request timeout
     .retries(3)                             // 5xx + transport retries; 0 disables
