@@ -40,7 +40,8 @@ final class HttpTransport {
     }
 
     /** Fire the request and either return a parsed Response (2xx) or
-     *  throw a typed {@link TldrapiException}. */
+     *  throw a typed {@link TldrapiException}. Multipart variant lives
+     *  in {@link #requestMultipart}. */
     Response request(String method, String path, JsonNode jsonBody,
                      Map<String, String> headers, int perCallTimeoutSeconds) throws TldrapiException {
         int retries = options.getRetries();
@@ -88,6 +89,91 @@ final class HttpTransport {
         throw lastFailure != null
             ? lastFailure
             : new TldrapiException.Network("unknown transport failure", null);
+    }
+
+    /** Multipart variant. Response envelope carries the HTTP status (200
+     *  vs 202 matters for async PDF flow). Uses a synthesized boundary
+     *  and calls the platform's multipart form-data encoder inline. */
+    Response requestMultipart(String path, byte[] fileBytes, String filename,
+                              String contentType, Map<String, String> headers,
+                              int perCallTimeoutSeconds) throws TldrapiException {
+        int retries = options.getRetries();
+        int effectiveTimeout = perCallTimeoutSeconds > 0
+            ? perCallTimeoutSeconds
+            : options.getTimeoutSeconds();
+
+        String boundary = "----tldrapi-boundary-" + Long.toHexString(System.nanoTime())
+            + Long.toHexString(ThreadLocalRandom.current().nextLong());
+        byte[] body = buildMultipartBody(boundary, fileBytes, filename, contentType);
+
+        TldrapiException lastFailure = null;
+
+        for (int attempt = 0; attempt <= retries; attempt++) {
+            URI uri = URI.create(options.getBaseUrl() + path);
+            HttpRequest.Builder b = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(effectiveTimeout));
+            for (Map.Entry<String, String> e : headers.entrySet()) {
+                // Skip caller-provided Content-Type — multipart controls its own.
+                if (e.getKey().equalsIgnoreCase("Content-Type")) continue;
+                b.header(e.getKey(), e.getValue());
+            }
+            b.header("Content-Type", "multipart/form-data; boundary=" + boundary);
+            b.POST(HttpRequest.BodyPublishers.ofByteArray(body));
+            HttpRequest req = b.build();
+
+            HttpResponse<byte[]> resp;
+            try {
+                resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            } catch (HttpTimeoutException e) {
+                lastFailure = new TldrapiException.Timeout(
+                    "request timed out after " + effectiveTimeout + "s", e);
+                if (attempt < retries) { sleepBackoff(attempt); continue; }
+                throw lastFailure;
+            } catch (IOException e) {
+                lastFailure = new TldrapiException.Network(
+                    "transport error: " + e.getMessage(), e);
+                if (attempt < retries) { sleepBackoff(attempt); continue; }
+                throw lastFailure;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TldrapiException.Network("interrupted", e);
+            }
+
+            int status = resp.statusCode();
+            // 200 sync + 202 async are both success paths for /convert/pdf-to-latex.
+            if (status >= 200 && status < 300) {
+                return new Response(status, resp.headers().map(), resp.body());
+            }
+            if (status >= 500 && attempt < retries) {
+                sleepBackoff(attempt);
+                continue;
+            }
+            JsonNode err = JsonUtil.parseOrMissing(resp.body());
+            int retryAfter = parseRetryAfter(firstHeader(resp.headers().map(), "retry-after"));
+            String requestId = firstHeader(resp.headers().map(), "x-request-id");
+            throw TldrapiException.fromResponse(status, err, requestId, retryAfter);
+        }
+        throw lastFailure != null
+            ? lastFailure
+            : new TldrapiException.Network("unknown transport failure", null);
+    }
+
+    private static byte[] buildMultipartBody(String boundary, byte[] fileBytes,
+                                             String filename, String contentType) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try {
+            String head = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n"
+                + "Content-Type: " + (contentType == null || contentType.isEmpty() ? "application/octet-stream" : contentType) + "\r\n"
+                + "\r\n";
+            out.write(head.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.write(fileBytes);
+            out.write("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.write(("--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException impossible) {
+            // ByteArrayOutputStream never throws.
+        }
+        return out.toByteArray();
     }
 
     private HttpRequest buildRequest(String method, String path, JsonNode jsonBody,

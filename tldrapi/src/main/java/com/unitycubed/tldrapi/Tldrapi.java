@@ -77,6 +77,10 @@ public final class Tldrapi {
         payload.put("input_text", inputText);
         if (opts.getSessionId() != null) payload.put("session_id", opts.getSessionId());
         if (opts.getModelAlias() != null) payload.put("model_alias", opts.getModelAlias());
+        if (opts.getConfig() != null) {
+            ObjectNode cfg = opts.getConfig().toJson();
+            if (cfg != null) payload.set("config", cfg);
+        }
 
         Map<String, String> headers = buildHeaders(opts.getTier(), opts.getExtraHeaders());
         if (opts.isAllowOverage()) {
@@ -112,6 +116,180 @@ public final class Tldrapi {
         HttpTransport.Response resp = transport.request(
             "GET", "/usage", null, buildHeaders(null, null), 0);
         return UsageStats.fromResponse(resp);
+    }
+
+    // ─── /convert/{json,html,md}-to-text (text-body) ─────────────────
+
+    /** POST {@code /convert/json-to-text} — normalize JSON to plaintext. */
+    public ConvertResult convertJsonToText(String text) throws TldrapiException {
+        return convertText("/convert/json-to-text", text, false);
+    }
+
+    /** POST {@code /convert/html-to-text} — strip HTML to plaintext. */
+    public ConvertResult convertHtmlToText(String text) throws TldrapiException {
+        return convertText("/convert/html-to-text", text, false);
+    }
+
+    /** POST {@code /convert/md-to-text} — render Markdown to plaintext. */
+    public ConvertResult convertMdToText(String text) throws TldrapiException {
+        return convertText("/convert/md-to-text", text, false);
+    }
+
+    private ConvertResult convertText(String path, String text, boolean allowOverage) throws TldrapiException {
+        if (text == null || text.isEmpty()) {
+            throw new IllegalArgumentException("text must be non-empty");
+        }
+        ObjectNode payload = JsonUtil.MAPPER.createObjectNode();
+        payload.put("text", text);
+        Map<String, String> headers = buildHeaders(null, null);
+        if (allowOverage) headers.put("X-Allow-Overage", "true");
+        HttpTransport.Response resp = transport.request("POST", path, payload, headers, 0);
+        return ConvertResult.fromResponse(resp);
+    }
+
+    // ─── multipart /convert file endpoints ───────────────────────────
+
+    /** POST {@code /convert/doc-to-text} — extract plaintext from a
+     *  doc/docx/odt/rtf file. */
+    public ConvertResult convertDocToText(byte[] fileBytes, String filename) throws TldrapiException {
+        return convertFile("/convert/doc-to-text", fileBytes, filename, null);
+    }
+
+    /** POST {@code /convert/doc-to-latex} — extract LaTeX source. */
+    public ConvertResult convertDocToLatex(byte[] fileBytes, String filename) throws TldrapiException {
+        return convertFile("/convert/doc-to-latex", fileBytes, filename, null);
+    }
+
+    /** POST {@code /convert/docx-to-text} — deprecated alias of
+     *  {@link #convertDocToText}. */
+    public ConvertResult convertDocxToText(byte[] fileBytes, String filename) throws TldrapiException {
+        return convertFile("/convert/docx-to-text", fileBytes, filename, null);
+    }
+
+    private ConvertResult convertFile(String path, byte[] fileBytes, String filename, String backend)
+            throws TldrapiException {
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new IllegalArgumentException("fileBytes must be non-empty");
+        }
+        Map<String, String> headers = buildHeaders(null, null);
+        headers.remove("Content-Type"); // multipart owns Content-Type
+        if (backend != null) headers.put("X-PDF-Backend", backend);
+        HttpTransport.Response resp = transport.requestMultipart(
+            path, fileBytes,
+            (filename == null || filename.isEmpty()) ? "upload" : filename,
+            null, headers, 0);
+        return ConvertResult.fromResponse(resp);
+    }
+
+    /** POST {@code /convert/pdf-to-latex} — extract LaTeX from a PDF.
+     *  On HTTP 202 the returned result carries jobId / pollUrl /
+     *  status="queued"; poll {@link #pdfStatus(String)}.
+     *  @param backend {@code "auto"}, {@code "text"}, or {@code "modal"};
+     *                 null → server picks. */
+    public PdfConvertResult convertPdfToLatex(byte[] fileBytes, String filename, String backend)
+            throws TldrapiException {
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new IllegalArgumentException("fileBytes must be non-empty");
+        }
+        if (backend != null && !backend.equals("auto") && !backend.equals("text") && !backend.equals("modal")) {
+            throw new IllegalArgumentException("backend must be one of auto,text,modal (got " + backend + ")");
+        }
+        Map<String, String> headers = buildHeaders(null, null);
+        headers.remove("Content-Type");
+        if (backend != null) headers.put("X-PDF-Backend", backend);
+        HttpTransport.Response resp = transport.requestMultipart(
+            "/convert/pdf-to-latex", fileBytes,
+            (filename == null || filename.isEmpty()) ? "upload.pdf" : filename,
+            "application/pdf", headers, 0);
+        return PdfConvertResult.fromResponse(resp);
+    }
+
+    /** GET {@code /convert/pdf-to-latex/status/:job_id} — poll async PDF. */
+    public PdfConvertResult pdfStatus(String jobId) throws TldrapiException {
+        if (jobId == null || jobId.isEmpty()) {
+            throw new IllegalArgumentException("jobId required");
+        }
+        HttpTransport.Response resp = transport.request(
+            "GET",
+            "/convert/pdf-to-latex/status/" + urlPathEncode(jobId),
+            null, buildHeaders(null, null), 0);
+        return PdfConvertResult.fromResponse(resp);
+    }
+
+    // ─── rates history + usage range ────────────────────────────────
+
+    /** GET {@code /rates/history}. */
+    public RatesHistory ratesHistory() throws TldrapiException {
+        HttpTransport.Response resp = transport.request(
+            "GET", "/rates/history", null, buildHeaders(null, null), 0);
+        return RatesHistory.fromResponse(resp);
+    }
+
+    /** GET {@code /usage/range?from=&to=} (YYYY-MM-DD). */
+    public UsageRange usageRange(String from, String to) throws TldrapiException {
+        if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
+            throw new IllegalArgumentException("from and to required (YYYY-MM-DD)");
+        }
+        String path = "/usage/range?from=" + urlQueryEncode(from) + "&to=" + urlQueryEncode(to);
+        HttpTransport.Response resp = transport.request("GET", path, null, buildHeaders(null, null), 0);
+        return UsageRange.fromResponse(resp);
+    }
+
+    // ─── custom prompts (Business/Enterprise) ───────────────────────
+
+    /** POST {@code /custom-prompts/submit}. */
+    public CustomPromptResult customPromptSubmit(String voiceName, String instruction,
+                                                 String sessionIdOrNull, boolean allowOverage) throws TldrapiException {
+        if (voiceName == null || voiceName.isEmpty() || instruction == null || instruction.isEmpty()) {
+            throw new IllegalArgumentException("voiceName and instruction required");
+        }
+        ObjectNode body = JsonUtil.MAPPER.createObjectNode();
+        body.put("voice_name", voiceName);
+        body.put("instruction", instruction);
+        if (sessionIdOrNull != null) body.put("session_id", sessionIdOrNull);
+        Map<String, String> headers = buildHeaders(null, null);
+        if (allowOverage) headers.put("X-Allow-Overage", "true");
+        HttpTransport.Response resp = transport.request("POST", "/custom-prompts/submit", body, headers, 0);
+        return CustomPromptResult.fromResponse(resp);
+    }
+
+    /** POST {@code /custom-prompts/list}. */
+    public CustomPromptList customPromptsList(String sessionIdOrNull) throws TldrapiException {
+        ObjectNode body = JsonUtil.MAPPER.createObjectNode();
+        if (sessionIdOrNull != null) body.put("session_id", sessionIdOrNull);
+        HttpTransport.Response resp = transport.request(
+            "POST", "/custom-prompts/list", body, buildHeaders(null, null), 0);
+        return CustomPromptList.fromResponse(resp);
+    }
+
+    /** GET {@code /custom-prompts/:id}. */
+    public CustomPromptDetail customPromptGet(String promptId) throws TldrapiException {
+        if (promptId == null || promptId.isEmpty()) {
+            throw new IllegalArgumentException("promptId required");
+        }
+        HttpTransport.Response resp = transport.request(
+            "GET", "/custom-prompts/" + urlPathEncode(promptId), null, buildHeaders(null, null), 0);
+        return CustomPromptDetail.fromResponse(resp);
+    }
+
+    /** Percent-encode a single path segment (RFC 3986 unreserved set). */
+    private static String urlPathEncode(String s) {
+        try {
+            // URLEncoder is form-encoding, which turns space into '+', not %20.
+            // Fix that inline — paths want %20.
+            return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        } catch (Exception e) {
+            return s;
+        }
+    }
+    /** Percent-encode a query-string value (space → '+' is fine here). */
+    private static String urlQueryEncode(String s) {
+        try {
+            return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return s;
+        }
     }
 
     private Map<String, String> buildHeaders(String tier, Map<String, String> extra) {

@@ -29,6 +29,7 @@ public final class SummarizeOptions {
     private final String tier;
     private final String sessionId;
     private final String modelAlias;
+    private final SummarizeConfig config;
     private final boolean allowOverage;
     private final Map<String, String> extraHeaders;
     private final int perCallTimeoutSeconds;
@@ -37,6 +38,7 @@ public final class SummarizeOptions {
         this.tier = b.tier;
         this.sessionId = b.sessionId;
         this.modelAlias = b.modelAlias;
+        this.config = b.config;
         this.allowOverage = b.allowOverage;
         this.extraHeaders = b.extraHeaders == null
             ? Collections.emptyMap()
@@ -47,6 +49,7 @@ public final class SummarizeOptions {
     public String  getTier()                  { return tier; }
     public String  getSessionId()             { return sessionId; }
     public String  getModelAlias()            { return modelAlias; }
+    public SummarizeConfig getConfig()        { return config; }
     public boolean isAllowOverage()           { return allowOverage; }
     public Map<String,String> getExtraHeaders(){ return extraHeaders; }
     public int     getPerCallTimeoutSeconds() { return perCallTimeoutSeconds; }
@@ -57,6 +60,7 @@ public final class SummarizeOptions {
         private String tier;
         private String sessionId;
         private String modelAlias;
+        private SummarizeConfig config;
         private boolean allowOverage;
         private Map<String, String> extraHeaders;
         private int perCallTimeoutSeconds;
@@ -64,6 +68,9 @@ public final class SummarizeOptions {
         public Builder tier(String v)         { this.tier = v; return this; }
         public Builder sessionId(String v)    { this.sessionId = v; return this; }
         public Builder modelAlias(String v)   { this.modelAlias = v; return this; }
+        /** Optional per-call generation overrides. Matches
+         *  openapi.yaml SummarizeRequest.config. */
+        public Builder config(SummarizeConfig v)   { this.config = v; return this; }
         public Builder allowOverage(boolean v){ this.allowOverage = v; return this; }
         public Builder extraHeaders(Map<String,String> v) { this.extraHeaders = v; return this; }
         public Builder perCallTimeoutSeconds(int v){ this.perCallTimeoutSeconds = v; return this; }
