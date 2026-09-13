@@ -44,11 +44,15 @@ public final class UsageStats {
     static UsageStats fromResponse(HttpTransport.Response r) throws TldrapiException {
         JsonNode body = r.jsonOrEmpty();
         JsonNode limitsNode = body.path("limits");
+        // Session 58 (2026-09-12) — smoke test caught that the server
+        // returns each limit as either a bare number OR a rich object
+        // like {"limit": N, "used": M, "remaining": K, ...}. Keep the
+        // raw JsonNode so callers can inspect either shape.
         UsageLimits limits = new UsageLimits(
-            limitsNode.hasNonNull("per_minute") ? Long.valueOf(limitsNode.path("per_minute").asLong()) : null,
-            limitsNode.hasNonNull("daily")      ? Long.valueOf(limitsNode.path("daily").asLong())      : null,
-            limitsNode.hasNonNull("credits")    ? Long.valueOf(limitsNode.path("credits").asLong())    : null,
-            limitsNode.hasNonNull("concurrent") ? Long.valueOf(limitsNode.path("concurrent").asLong()) : null
+            limitsNode.hasNonNull("per_minute") ? limitsNode.get("per_minute") : null,
+            limitsNode.hasNonNull("daily")      ? limitsNode.get("daily")      : null,
+            limitsNode.hasNonNull("credits")    ? limitsNode.get("credits")    : null,
+            limitsNode.hasNonNull("concurrent") ? limitsNode.get("concurrent") : null
         );
         return new UsageStats(
             body.path("usage_count").asLong(0),
@@ -67,21 +71,23 @@ public final class UsageStats {
      *  reports the limit, {@code null} otherwise. Shape mirrors
      *  {@code openapi.yaml UsageResponse.limits}. */
     public static final class UsageLimits {
-        private final Long perMinute;
-        private final Long daily;
-        private final Long credits;
-        private final Long concurrent;
+        private final JsonNode perMinute;
+        private final JsonNode daily;
+        private final JsonNode credits;
+        private final JsonNode concurrent;
 
-        UsageLimits(Long perMinute, Long daily, Long credits, Long concurrent) {
+        UsageLimits(JsonNode perMinute, JsonNode daily, JsonNode credits, JsonNode concurrent) {
             this.perMinute = perMinute;
             this.daily = daily;
             this.credits = credits;
             this.concurrent = concurrent;
         }
 
-        public Long getPerMinute()  { return perMinute; }
-        public Long getDaily()      { return daily; }
-        public Long getCredits()    { return credits; }
-        public Long getConcurrent() { return concurrent; }
+        /** Rate-limit descriptor; may be a bare number or an object with
+         *  {@code limit/used/remaining/...} depending on tier. */
+        public JsonNode getPerMinute()  { return perMinute; }
+        public JsonNode getDaily()      { return daily; }
+        public JsonNode getCredits()    { return credits; }
+        public JsonNode getConcurrent() { return concurrent; }
     }
 }
