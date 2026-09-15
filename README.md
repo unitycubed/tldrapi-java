@@ -44,7 +44,6 @@ implementation 'com.unitycubed:tldrapi:0.1.0'
   - [Handle a rate-limit with backoff](#handle-a-rate-limit-with-backoff)
   - [Show live credit balance to your user](#show-live-credit-balance-to-your-user)
   - [Advanced quality controls — 3 axes, 30 named presets](#advanced-quality-controls)
-- [Quality tiers](#quality-tiers)
 - [Async submit + poll](#async-submit--poll)
 - [Error handling](#error-handling)
 - [Configuration](#configuration)
@@ -224,19 +223,7 @@ client.summarize(text,
 Native builder methods for the 3 axes + `allowDowngrade` land in the
 next SDK release. Use `extraHeaders` in the meantime.
 
-## Quality tiers
-
-| Tier      | Reads at once   | Best for                          |
-|-----------|----------------:|-----------------------------------|
-| quick     |     4K tokens   | Short texts, previews             |
-| standard  |    16K tokens   | Default — most articles           |
-| deep      |    32K tokens   | Longer content, deeper reasoning  |
-| premium   |    64K tokens   | Substantial documents             |
-| ultra     |   100K tokens   | Long-form / research-grade        |
-
-Full pricing detail (methodology, formula, dynamic-pricing audit trail): [tldrapi.com/pricing](https://tldrapi.com/pricing). Live rates via `/rates` or the SDK's `rates()` method.rates()`.
-
-### Paid-tier quality guarantees
+## Paid-tier quality guarantees
 
 Default = strict wait for the tier's canonical primary model. Opt into
 permissive fallback with `X-Allow-Downgrade: true` — the worker walks
