@@ -1,19 +1,24 @@
-> ### ⚠️ Service notice
->
-> **The RapidAPI listing that backs this SDK is temporarily unavailable while we work through a launch-day issue. Please check back in a few days.**
-
 # TLDRapi Java SDK
 
-Official Java client for the [TLDRapi](https://tldrapi.com) text-summarization API.
+Official Java client for [TLDRapi](https://tldrapi.com) — turn any
+content into a clean summary in one API call.
 
-- **Java 11+** (uses `java.net.http.HttpClient` — no Apache HttpClient or OkHttp)
-- **One dependency**: Jackson (`com.fasterxml.jackson.core:jackson-databind`)
-- **Thread-safe**: construct once, share the client
-- **Typed exceptions** for every failure mode the server distinguishes
+- **Free tier** — 100 credits per month, no card, no trial expiry
+- **20+ input formats** — text, HTML, Markdown, PDF (with OCR), .docx,
+  .doc, .odt, .rtf, .epub, JSON, YAML, CSV, transcripts
+- **5 quality tiers** — pick latency vs. depth per call
+- **Custom voice styles** — 20+ built-in voices; paid tiers can define
+  their own with plain-English instructions
+- **Multi-provider routing** — automatic failover across Anthropic,
+  OpenAI, Groq, Gemini, and OpenRouter
+- **Refunds you don't have to ask for** — every summary is judge-scored
+  and mis-summaries are auto-refunded
+- **Java 11+**, single dep (Jackson), thread-safe, no OkHttp / Apache
+  HttpClient required — uses stdlib `java.net.http.HttpClient`
 
 ## Install
 
-Add to your `pom.xml`:
+Maven:
 
 ```xml
 <dependency>
@@ -23,15 +28,41 @@ Add to your `pom.xml`:
 </dependency>
 ```
 
-Or Gradle:
+Gradle:
 
 ```groovy
 implementation 'com.unitycubed:tldrapi:0.1.0'
 ```
 
-## Quick start
+## Table of contents
 
-Subscribe to TLDRapi on RapidAPI, copy your `X-RapidAPI-Key`, then:
+- [Getting your free key](#getting-your-free-key)
+- [Hello world](#hello-world)
+- [Examples gallery](#examples-gallery)
+  - [Summarize an article by URL](#summarize-an-article-by-url)
+  - [Pin a session across many summaries](#pin-a-session-across-many-summaries)
+  - [Handle a rate-limit with backoff](#handle-a-rate-limit-with-backoff)
+  - [Show live credit balance to your user](#show-live-credit-balance-to-your-user)
+  - [Advanced quality controls — 3 axes, 30 named presets](#advanced-quality-controls)
+- [Quality tiers](#quality-tiers)
+- [Async submit + poll](#async-submit--poll)
+- [Error handling](#error-handling)
+- [Configuration](#configuration)
+- [License](#license)
+
+## Getting your free key
+
+1. Sign in at [rapidapi.com](https://rapidapi.com)
+2. Subscribe to the [TLDRapi Summarizer](https://rapidapi.com/thunderAPIs256/api/tldrapi-summarizer)
+   listing — choose **BASIC (Free)**
+3. Open the listing → **Console** → **Applications** → **Add App**
+4. In the App → **Authorizations** tab → copy the Authorization Key
+
+Pass it to the builder as `rapidApiKey`. Everything on the free tier
+works exactly like paid tiers — same endpoints, same response shape,
+same SDK — just with a 100-credit monthly cap.
+
+## Hello world
 
 ```java
 import com.unitycubed.tldrapi.Tldrapi;
@@ -45,75 +76,161 @@ public class Example {
             .build();
 
         SummarizeResult r = client.summarize(
-            "Long article text goes here...",
-            SummarizeOptions.builder().tier("standard").build());
+            "Some long article body here...");
 
         System.out.println(r.getSummary());
-        System.out.println("cost: $" + r.getUsage().getTotalCost());
         System.out.println("credits remaining: " + r.getCredits().getRemaining());
     }
 }
 ```
 
-## Quality levels
+## Examples gallery
 
-| tier       | max chunk tokens | best for                                       |
-|------------|-----------------:|------------------------------------------------|
-| `quick`    |            4,000 | short summaries, high throughput, free tier    |
-| `standard` |           16,000 | most articles + long blog posts                |
-| `deep`     |           32,000 | long documents where accuracy matters          |
-| `premium`  |           64,000 | research papers, contracts, dense material     |
-| `ultra`    |          100,000 | maximum quality; slowest; use sparingly        |
+### Summarize an article by URL
 
-Free tier is `quick`-only. Paid plans unlock the rest.
-
-Credit cost scales with input size (v2.1):
-`cost = 1 + Σ over chunks of (base × ceil(chunk_tokens / 1000))`.
-Base costs and chunk caps are dynamic — fetch the current schedule
-with `client.rates()` or from `GET /rates`.
-
-## Advanced quality controls (v-session129+)
-
-Server-side new features can be reached from Java via
-`SummarizeOptions.builder().extraHeaders(map)`:
-
-- `X-Quality: <preset>` — one of 30 named presets (compound
-  `{minimal|brief|balanced|thorough|detailed|complete}-{quick|standard|
-  deep|premium|ultra}`, e.g. `"thorough-standard"`). Five short names
-  (`quick`/`standard`/`deep`/`premium`/`ultra`) are SCORECARD-validated
-  highlighted anchors.
-- `X-Optional-Quality: <llm>` / `X-Optional-Extractive-Lvl: <ret>` /
-  `X-Optional-Strategy: <strategy>` — override any subset of the 3 axes.
-- `X-Allow-Downgrade: true` — opt-in permissive paid-tier downgrade.
-- `X-Async: true` — async submit; the response is 202 with an
-  `X-Paid-Request-Id` header. Poll `GET /paid/result/{id}` on the
-  `Retry-After` interval until 200.
+TLDRapi accepts URLs directly — the server fetches, extracts main
+content, strips nav/ads, and summarizes.
 
 ```java
+SummarizeResult r = client.summarize(
+    "https://arxiv.org/abs/1706.03762",
+    SummarizeOptions.builder().tier("deep").build());
+System.out.println(r.getSummary());
+```
+
+Works with HTML pages, news sites, GitHub READMEs, blog posts, and
+academic PDFs served over HTTP.
+
+### Pin a session across many summaries
+
+```java
+SummarizeResult r1 = client.summarize("Doc 1");
+
+SummarizeResult r2 = client.summarize("Doc 2",
+    SummarizeOptions.builder().sessionId(r1.getSessionId()).build());
+
+SummarizeResult r3 = client.summarize("Doc 3",
+    SummarizeOptions.builder().sessionId(r1.getSessionId()).build());
+```
+
+Useful when you want consistent voice across a run — legal briefs in
+the same case file, chapters of the same book, tickets in the same
+support thread.
+
+### Handle a rate-limit with backoff
+
+```java
+for (int attempt = 0; attempt < 3; attempt++) {
+    try {
+        SummarizeResult r = client.summarize(text,
+            SummarizeOptions.builder().tier("deep").build());
+        System.out.println(r.getSummary());
+        break;
+    } catch (TldrapiException.RateLimit e) {
+        long ms = Math.max(e.getRetryAfterSeconds(), 60) * 1000L;
+        Thread.sleep(ms);
+    }
+}
+```
+
+### Show live credit balance to your user
+
+```java
+UsageStats u = client.usage();
+System.out.println("You have " + u.getCreditsRemaining() +
+                   " credits left (" + u.getPlan() + ")");
+
+SummarizeResult r = client.summarize(text);
+System.out.println("That call cost " + r.getCredits().getCharged() +
+                   " credits. Remaining: " + r.getCredits().getRemaining());
+```
+
+### Advanced quality controls
+
+Every summarize call has three orthogonal knobs. You can send zero of
+them (defaults are fine), or a named preset, or set 1-3 optional axes
+via `extraHeaders`, or combine — axes override the preset and the
+server returns `X-Quality-Warning`.
+
+**30 named presets.** `tier(...)` accepts one of five short canonical
+names (`quick`, `standard`, `deep`, `premium`, `ultra`) or one of 25
+compound presets (e.g. `"thorough-standard"`, `"complete-quick"`).
+
+**Three optional axis overrides**, sent as headers via `extraHeaders`:
+
+- `X-Optional-Quality` — LLM tier: `quick | standard | deep | premium | ultra`
+- `X-Optional-Extractive-Lvl` — retention level: `minimal | brief | balanced | thorough | detailed | complete`
+- `X-Optional-Strategy` — inference strategy: `contextual-compression | premium-single-shot | hierarchical-merge`
+
+```java
+// named preset
+client.summarize(text,
+    SummarizeOptions.builder().tier("thorough-quick").build());
+
+// preset + one axis override (axes win, warning header returned)
 Map<String,String> h = new HashMap<>();
-h.put("X-Optional-Quality", "premium");
 h.put("X-Optional-Extractive-Lvl", "brief");
-h.put("X-Allow-Downgrade", "true");
-SummarizeResult r = client.summarize(text,
-    SummarizeOptions.builder().extraHeaders(h).build());
+client.summarize(text,
+    SummarizeOptions.builder().tier("premium").extraHeaders(h).build());
+
+// all three axes, no preset
+Map<String,String> all = new HashMap<>();
+all.put("X-Optional-Quality", "ultra");
+all.put("X-Optional-Extractive-Lvl", "complete");
+all.put("X-Optional-Strategy", "premium-single-shot");
+client.summarize(text,
+    SummarizeOptions.builder().extraHeaders(all).build());
+
+// opt into permissive downgrade on paid-tier
+Map<String,String> pd = new HashMap<>();
+pd.put("X-Allow-Downgrade", "true");
+client.summarize(text,
+    SummarizeOptions.builder().tier("premium").extraHeaders(pd).build());
+```
+
+Native builder methods for the 3 axes + `allowDowngrade` land in the
+next SDK release. Use `extraHeaders` in the meantime.
+
+## Quality tiers
+
+| Tier      | Reads at once   | Best for                          |
+|-----------|----------------:|-----------------------------------|
+| quick     |     4K tokens   | Short texts, previews             |
+| standard  |    16K tokens   | Default — most articles           |
+| deep      |    32K tokens   | Longer content, deeper reasoning  |
+| premium   |    64K tokens   | Substantial documents             |
+| ultra     |   100K tokens   | Long-form / research-grade        |
+
+Live rates at [/rates](https://tldrapi.com/rates) or `client.rates()`.
+
+### Paid-tier quality guarantees
+
+Default = strict wait for the tier's canonical primary model. Opt into
+permissive fallback with `X-Allow-Downgrade: true` — the worker walks
+DOWN the ladder (premium → deep → standard → quick) and returns
+whichever tier's primary is available. Response carries
+`X-Quality-Actual` and `X-Original-Tier` when a downgrade happened,
+and the credit-cost delta is automatically refunded.
+
+## Async submit + poll
+
+Reachable today via `extraHeaders` + a manual poll:
+
+```java
+// Submit
+Map<String,String> h = new HashMap<>();
+h.put("X-Async", "true");
+SummarizeResult sub = client.summarize(text,
+    SummarizeOptions.builder().tier("ultra").extraHeaders(h).build());
+String requestId = sub.getHeader("X-Paid-Request-Id");
+
+// Poll GET /paid/result/{id} — 200 done, 202 queued, 410 expired
 ```
 
 Native `submitAsync` / `getResult` / `waitForResult` methods land in
-the next SDK release; today, use raw `HttpClient.send()` against
-`/paid/result/{id}` for polling.
+the next SDK release.
 
-## Session continuity
-
-Pin a series of related calls to the same server session so tunables + model choice stay stable:
-
-```java
-SummarizeResult first = client.summarize(chapterOne);
-
-SummarizeResult second = client.summarize(chapterTwo,
-    SummarizeOptions.builder().sessionId(first.getSessionId()).build());
-```
-
-## Handling errors
+## Error handling
 
 Every failure the client raises subclasses `TldrapiException`:
 
@@ -122,36 +239,35 @@ import com.unitycubed.tldrapi.TldrapiException;
 
 try {
     SummarizeResult r = client.summarize(text);
-    // ...
 } catch (TldrapiException.Authentication e) {
     // 401/403: bad or missing key
 } catch (TldrapiException.RateLimit e) {
     Thread.sleep(e.getRetryAfterSeconds() * 1000L);
-    // retry manually — the SDK deliberately does not auto-retry 429
 } catch (TldrapiException.InsufficientCredits e) {
-    // 402: surface the upgrade path from e.getResponseBody()
+    // 402: surface the top-up path from e.getResponseBody()
 } catch (TldrapiException.LanguageNotSupported e) {
-    // 400: only English supported at launch
+    // 400: English-only at launch; cross-lingual coming Month 2-3
 } catch (TldrapiException.Server e) {
     // 5xx after retries exhausted
 } catch (TldrapiException e) {
-    // catch-all: anything else the SDK produced
+    // catch-all
 }
 ```
 
-## Configuration
+Every exception carries `getStatusCode()`, `getRequestId()` (attach
+when reporting bugs), and `getResponseBody()`.
 
-All builder options with defaults:
+## Configuration
 
 ```java
 Tldrapi client = Tldrapi.builder()
-    .rapidApiKey("...")                    // required
-    .rapidApiHost("tldrapi.p.rapidapi.com") // default
-    .baseUrl(null)                          // defaults to https://<rapidApiHost>
-    .timeoutSeconds(60)                     // per-request timeout
-    .retries(3)                             // 5xx + transport retries; 0 disables
-    .userAgent(null)                        // defaults to "tldrapi-java/<version>"
-    .httpClient(null)                       // inject your own HttpClient if needed
+    .rapidApiKey("...")                                 // required
+    .rapidApiHost("tldrapi-summarizer.p.rapidapi.com")  // default
+    .baseUrl(null)                                      // defaults to https://<rapidApiHost>
+    .timeoutSeconds(60)                                 // per-request
+    .retries(3)                                         // 5xx + transport retries; 0 disables
+    .userAgent(null)                                    // defaults to "tldrapi-java/<version>"
+    .httpClient(null)                                   // inject your own HttpClient if needed
     .build();
 ```
 
@@ -159,11 +275,12 @@ Per-call options:
 
 ```java
 SummarizeOptions opts = SummarizeOptions.builder()
-    .tier("deep")                    // quick|standard|deep|premium|ultra
+    .tier("deep")                    // one of the 30 presets
     .sessionId("...")                // pin to a prior session
     .modelAlias("openai-gpt-4o")     // force a specific model (rarely needed)
     .allowOverage(false)             // permit charges beyond included credits
     .perCallTimeoutSeconds(120)      // override client timeout for this call
+    .extraHeaders(headers)           // any X-* headers, e.g. X-Allow-Downgrade
     .build();
 ```
 
@@ -176,10 +293,8 @@ mvn clean install
 
 Tests: `mvn test`.
 
-## Publishing to Maven Central
-
-See `runbooks/publish-java-sdk-maven-central.md` in the repo root. Requires a Sonatype OSSRH account and a GPG signing key on public keyservers.
-
 ## License
 
 MIT. See `LICENSE`.
+
+Copyright (c) 2026 Ehren Biglari / Unity Cubed.
