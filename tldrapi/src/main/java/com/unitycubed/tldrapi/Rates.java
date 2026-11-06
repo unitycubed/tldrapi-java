@@ -15,18 +15,18 @@ public final class Rates {
     private final int standard;
     private final int deep;
     private final int premium;
-    private final int ultra;
+    private final int max;
     private final String creditCostsUpdatedAt;
     private final String historyUrl;
     private final JsonNode raw;
 
-    Rates(int quick, int standard, int deep, int premium, int ultra,
+    Rates(int quick, int standard, int deep, int premium, int max,
           String creditCostsUpdatedAt, String historyUrl, JsonNode raw) {
         this.quick = quick;
         this.standard = standard;
         this.deep = deep;
         this.premium = premium;
-        this.ultra = ultra;
+        this.max = max;
         this.creditCostsUpdatedAt = creditCostsUpdatedAt;
         this.historyUrl = historyUrl;
         this.raw = raw;
@@ -36,7 +36,7 @@ public final class Rates {
     public int getStandard() { return standard; }
     public int getDeep()     { return deep; }
     public int getPremium()  { return premium; }
-    public int getUltra()    { return ultra; }
+    public int getUltra()    { return max; }
     public String getCreditCostsUpdatedAt() { return creditCostsUpdatedAt; }
     /** Deprecated alias for {@link #getCreditCostsUpdatedAt()}. */
     @Deprecated
@@ -52,7 +52,7 @@ public final class Rates {
             cpc.path("standard").asInt(5),
             cpc.path("deep").asInt(30),
             cpc.path("premium").asInt(110),
-            cpc.path("ultra").asInt(400),
+            cpc.path("max").asInt(400),
             body.path("credit_costs_updated_at").asText(null),
             body.path("history_url").asText(""),
             body

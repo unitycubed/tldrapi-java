@@ -59,7 +59,7 @@ public class Example {
 | `standard` |            5 | most articles + long blog posts                |
 | `deep`     |           30 | long documents where accuracy matters          |
 | `premium`  |          110 | research papers, contracts, dense material     |
-| `ultra`    |          400 | maximum quality; slowest; use sparingly        |
+| `max`    |          400 | maximum quality; slowest; use sparingly        |
 
 Free tier is `quick`-only. Paid plans unlock the rest.
 
@@ -120,7 +120,7 @@ Per-call options:
 
 ```java
 SummarizeOptions opts = SummarizeOptions.builder()
-    .tier("deep")                    // quick|standard|deep|premium|ultra
+    .tier("deep")                    // quick|standard|deep|premium|max
     .sessionId("...")                // pin to a prior session
     .modelAlias("openai-gpt-4o")     // force a specific model (rarely needed)
     .allowOverage(false)             // permit charges beyond included credits

@@ -70,7 +70,7 @@ public final class Tldrapi {
         if (opts == null) opts = SummarizeOptions.builder().build();
         if (opts.getTier() != null && !VALID_TIERS.contains(opts.getTier())) {
             throw new IllegalArgumentException(
-                "invalid tier '" + opts.getTier() + "' — must be one of quick, standard, deep, premium, ultra");
+                "invalid tier '" + opts.getTier() + "' — must be one of quick, standard, deep, premium, max");
         }
 
         ObjectNode payload = JsonUtil.MAPPER.createObjectNode();
@@ -306,7 +306,7 @@ public final class Tldrapi {
     }
 
     private static final java.util.Set<String> VALID_TIERS = new java.util.HashSet<>(
-        java.util.Arrays.asList("quick", "standard", "deep", "premium", "ultra"));
+        java.util.Arrays.asList("quick", "standard", "deep", "premium", "max"));
 
     // ---------------- builder ----------------
 

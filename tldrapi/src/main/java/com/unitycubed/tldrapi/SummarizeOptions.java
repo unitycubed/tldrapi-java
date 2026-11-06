@@ -10,7 +10,7 @@ import java.util.Map;
  *
  * <p>Fields:
  * <ul>
- *   <li>{@code tier} — quality tier: quick|standard|deep|premium|ultra.
+ *   <li>{@code tier} — quality tier: quick|standard|deep|premium|max.
  *       Omitted → server picks the default for your plan.</li>
  *   <li>{@code sessionId} — pin subsequent calls to the same session so
  *       state (model + tunables) stays stable across a document.</li>
